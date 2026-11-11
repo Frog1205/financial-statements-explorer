@@ -1,0 +1,1240 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>财报四表查询</title>
+<meta name="description" content="输入 A 股公司名称或代码，调取近五年年报的利润表、资产负债表、现金流量表、所有者权益表，固定行次模板，一键导出 Excel。" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232348c4'/%3E%3Cpath d='M8 9h16v3H8zM8 14.5h16v3H8zM8 20h10v3H8z' fill='%23fff'/%3E%3C/svg%3E" />
+<style>
+/* 布局：顶栏（品牌 + 联想搜索）→ 自选/最近 → 公司抬头 → 标签页（概览 + 四表）→ 工具条 + 表格 */
+:root{
+  --bg:#f2f4f8; --surface:#ffffff; --surface2:#f6f8fb; --head:#edf0f6;
+  --ink:#131a27; --ink2:#465166; --ink3:#8691a4;
+  --line:#e2e7ef; --line2:#cbd3df;
+  --accent:#2348c4; --accent-ink:#1c3aa0; --accent-soft:#c9d5f7; --accent-bg:#eaf0fe;
+  --up:#c5302b; --up-bg:#fdecea; --down:#0f7d58; --down-bg:#e4f5ee;
+  --warn:#9a6a10; --warn-bg:#fdf3dc;
+  --shadow:0 1px 2px rgba(20,30,50,.05),0 8px 24px rgba(20,30,50,.06);
+  --font:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans CJK SC",sans-serif;
+  --num:"DIN Alternate","Bahnschrift","Roboto Condensed","Helvetica Neue",Arial,var(--font);
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){ :root:not([data-theme="light"]){
+  --bg:#0c1016; --surface:#141a23; --surface2:#19202b; --head:#1b2330;
+  --ink:#e7ebf1; --ink2:#a5afbf; --ink3:#6c7789;
+  --line:#242c39; --line2:#374356;
+  --accent:#7b9bff; --accent-ink:#a9bdff; --accent-soft:#2c3d72; --accent-bg:#1a2444;
+  --up:#ff7168; --up-bg:#3a1a1a; --down:#43c391; --down-bg:#12301f;
+  --warn:#e2b04a; --warn-bg:#33290f;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.35);
+  color-scheme:dark;
+}}
+:root[data-theme="dark"]{
+  --bg:#0c1016; --surface:#141a23; --surface2:#19202b; --head:#1b2330;
+  --ink:#e7ebf1; --ink2:#a5afbf; --ink3:#6c7789;
+  --line:#242c39; --line2:#374356;
+  --accent:#7b9bff; --accent-ink:#a9bdff; --accent-soft:#2c3d72; --accent-bg:#1a2444;
+  --up:#ff7168; --up-bg:#3a1a1a; --down:#43c391; --down-bg:#12301f;
+  --warn:#e2b04a; --warn-bg:#33290f;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.35);
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:14px/1.6 var(--font);-webkit-font-smoothing:antialiased}
+button,input{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.num{font-family:var(--num);font-variant-numeric:tabular-nums}
+
+/* 顶栏 */
+.top{position:sticky;top:0;z-index:30;background:var(--surface);border-bottom:1px solid var(--line)}
+.topIn{max-width:1240px;margin:0 auto;display:flex;align-items:center;gap:16px;flex-wrap:wrap;
+  padding:10px max(16px,env(safe-area-inset-right,0px)) 10px max(16px,env(safe-area-inset-left,0px))}
+.brand{display:flex;align-items:center;gap:9px;flex:none}
+.brandMark{width:28px;height:28px;border-radius:7px;background:var(--accent);display:grid;place-items:center}
+.brandMark i{display:block;width:14px;height:2.5px;background:#fff;border-radius:2px;box-shadow:0 5px 0 #fff,0 -5px 0 #fff}
+.brand b{font-size:16px;letter-spacing:.5px}
+.brand span{font-size:12px;color:var(--ink3)}
+.search{position:relative;flex:1;min-width:240px;display:flex;gap:8px}
+.searchBox{position:relative;flex:1;min-width:0}
+.searchBox svg{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--ink3);pointer-events:none}
+#q{width:100%;height:38px;padding:0 12px 0 34px;border:1px solid var(--line2);border-radius:8px;background:var(--surface2);outline:none}
+#q:focus{border-color:var(--accent);background:var(--surface);box-shadow:0 0 0 3px var(--accent-bg)}
+.sug{position:absolute;left:0;right:0;top:calc(100% + 6px);background:var(--surface);border:1px solid var(--line2);
+  border-radius:10px;box-shadow:var(--shadow);padding:4px;max-height:340px;overflow:auto;z-index:40}
+.sugItem{display:flex;align-items:center;gap:10px;width:100%;padding:7px 10px;border:0;background:none;border-radius:7px;text-align:left}
+.sugItem.on,.sugItem:hover{background:var(--accent-bg)}
+.sugItem .c{font-family:var(--num);color:var(--ink2);width:86px;flex:none}
+.sugItem .n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sugItem mark{background:none;color:var(--accent);font-weight:600}
+.sugEmpty{padding:10px 12px;color:var(--ink3);font-size:13px}
+.tag{flex:none;font-size:11px;line-height:18px;padding:0 6px;border-radius:4px;background:var(--head);color:var(--ink2)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:38px;padding:0 16px;border-radius:8px;
+  border:1px solid transparent;background:var(--accent);color:#fff;font-weight:600;white-space:nowrap;text-decoration:none}
+:root[data-theme="dark"] .btn.pri{color:#0c1016}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .btn.pri{color:#0c1016}}
+.btn:hover{filter:brightness(1.07)}
+.btn:disabled{opacity:.55;cursor:default}
+.btn.ghost{background:var(--surface);border-color:var(--line2);color:var(--ink);font-weight:500}
+.btn.ghost:hover{border-color:var(--accent);color:var(--accent);filter:none}
+.btn.sm{height:32px;padding:0 12px;font-size:13px}
+.btn.icon{width:38px;padding:0}
+
+.page{max-width:1240px;margin:0 auto;display:flex;flex-direction:column;gap:14px;padding-block:14px 48px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+
+/* 自选 / 最近 */
+.rail{display:flex;flex-wrap:wrap;gap:6px 18px;align-items:center;font-size:13px}
+.railGroup{display:flex;flex-wrap:wrap;gap:6px;align-items:center;min-width:0}
+.railLabel{color:var(--ink3);font-size:12px;margin-right:2px}
+.chip{border:1px solid var(--line2);background:var(--surface);color:var(--ink2);border-radius:999px;padding:2px 11px;font-size:12.5px;line-height:20px}
+.chip:hover{border-color:var(--accent);color:var(--accent)}
+.chip.on{border-color:var(--accent);background:var(--accent-bg);color:var(--accent-ink)}
+
+/* 状态条 */
+.status{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 14px;border-radius:10px;border:1px solid var(--line);background:var(--surface);font-size:13px;color:var(--ink2)}
+.status.err{border-color:var(--up);background:var(--up-bg);color:var(--ink)}
+.spin{width:14px;height:14px;border:2px solid var(--line2);border-top-color:var(--accent);border-radius:50%;animation:sp .7s linear infinite;flex:none}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+/* 公司抬头 */
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px}
+.co{display:flex;gap:14px 20px;align-items:center;flex-wrap:wrap;padding:14px 18px}
+.coMain{flex:1;min-width:230px}
+.coLine{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.coName{font-size:22px;font-weight:700;letter-spacing:.5px;line-height:1.3}
+.coCode{font-family:var(--num);font-size:15px;color:var(--ink2)}
+.coMeta{display:flex;gap:4px 14px;flex-wrap:wrap;margin-top:4px;font-size:12.5px;color:var(--ink3)}
+.coActs{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.star{width:32px;height:32px;border-radius:8px;border:1px solid var(--line2);background:var(--surface);display:grid;place-items:center;color:var(--ink3)}
+.star:hover{border-color:var(--warn);color:var(--warn)}
+.star.on{color:var(--warn);border-color:var(--warn);background:var(--warn-bg)}
+
+/* 标签页 */
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);overflow-x:auto;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tab{flex:none;border:0;background:none;padding:9px 16px;color:var(--ink2);font-size:14.5px;border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap}
+.tab:hover{color:var(--ink)}
+.tab[aria-selected="true"]{color:var(--accent);border-bottom-color:var(--accent);font-weight:600}
+.tab small{font-size:11px;color:var(--ink3);font-weight:400;margin-left:4px}
+
+/* 概览 */
+.kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+@media (max-width:900px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:540px){.kpis{grid-template-columns:minmax(0,1fr)}}
+.kpi{padding:14px 16px 10px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.kpiTop{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.kpiLabel{font-size:13px;color:var(--ink2)}
+.kpiVal{font-family:var(--num);font-size:28px;font-weight:700;line-height:1.25;letter-spacing:.2px}
+.kpiVal small{font-family:var(--font);font-size:13px;font-weight:500;color:var(--ink2);margin-left:3px}
+.kpiSub{font-size:12px;color:var(--ink3)}
+.delta{display:inline-flex;align-items:center;gap:2px;font-family:var(--num);font-size:12.5px;font-weight:600;padding:0 7px;border-radius:5px;line-height:20px;white-space:nowrap}
+.delta.up{color:var(--up);background:var(--up-bg)}
+.delta.down{color:var(--down);background:var(--down-bg)}
+.delta.flat{color:var(--ink3);background:var(--head)}
+.bars{display:block;width:100%;height:auto;margin-top:6px}
+.bars .bar{fill:var(--accent-soft)}
+.bars .bar.last{fill:var(--accent)}
+.bars .hit{fill:transparent}
+.bars .hit:hover + .bar,.bars g:hover .bar{fill:var(--accent)}
+.bars .base{stroke:var(--line2);stroke-width:1}
+.bars text{fill:var(--ink3);font-size:10px;font-family:var(--num)}
+.secTitle{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin:6px 2px 0}
+.secTitle h2{margin:0;font-size:15px}
+.secTitle span{font-size:12px;color:var(--ink3)}
+.checks{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0}
+@media (max-width:900px){.checks{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:540px){.checks{grid-template-columns:minmax(0,1fr)}}
+.check{padding:12px 16px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);margin:0 -1px -1px 0;min-width:0}
+.check b{display:flex;align-items:center;gap:6px;font-size:13px}
+.check p{margin:2px 0 0;font-size:12px;color:var(--ink3)}
+.dot{width:8px;height:8px;border-radius:50%;flex:none;background:var(--ink3)}
+.dot.ok{background:var(--down)} .dot.bad{background:var(--warn)}
+.checksWrap{overflow:hidden}
+
+/* 工具条 + 表格 */
+.tbar{display:flex;gap:8px 12px;align-items:center;flex-wrap:wrap}
+.barSpacer{flex:1}
+.seg{display:inline-flex;border:1px solid var(--line2);border-radius:8px;overflow:hidden;background:var(--surface)}
+.seg button{border:0;background:none;padding:0 12px;height:30px;font-size:13px;color:var(--ink2);border-right:1px solid var(--line)}
+.seg button:last-child{border-right:0}
+.seg button[aria-pressed="true"]{background:var(--accent-bg);color:var(--accent-ink);font-weight:600}
+.seg button:disabled{opacity:.4;cursor:default}
+.segLabel{font-size:12px;color:var(--ink3);margin-right:-6px}
+.filter{height:32px;width:150px;padding:0 10px;border:1px solid var(--line2);border-radius:8px;background:var(--surface);outline:none;font-size:13px}
+.filter:focus{border-color:var(--accent)}
+.tog{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--ink2);cursor:pointer;user-select:none}
+.tog input{accent-color:var(--accent);width:15px;height:15px;margin:0}
+.tblWrap{overflow:auto;max-height:72vh;border-radius:12px;border:1px solid var(--line);background:var(--surface)}
+table.data{width:100%;border-collapse:separate;border-spacing:0;font-size:13px}
+table.data th,table.data td{padding:7px 14px;border-bottom:1px solid var(--line);white-space:nowrap;text-align:right}
+table.data thead th{position:sticky;top:0;z-index:2;background:var(--head);color:var(--ink2);font-weight:600;font-size:12.5px}
+table.data th:first-child,table.data td:first-child{text-align:left;position:sticky;left:0;z-index:1;background:var(--surface);
+  white-space:normal;min-width:200px;max-width:320px;border-right:1px solid var(--line)}
+table.data thead th:first-child{z-index:3;background:var(--head)}
+table.data td{font-family:var(--num);font-variant-numeric:tabular-nums}
+table.data td:first-child{font-family:var(--font);color:var(--ink2)}
+table.data tbody tr:hover td{background:var(--accent-bg)}
+table.data tr.sec td{background:var(--surface2);color:var(--ink);font-family:var(--font);font-weight:700;font-size:12.5px;letter-spacing:.5px;text-align:left}
+table.data tr.sec:hover td{background:var(--surface2)}
+table.data tr.hl td{font-weight:700;color:var(--ink)}
+table.data tr.sub td:first-child{padding-left:28px}
+table.data tr.zero td{color:var(--ink3)}
+table.data td.dim,.dim{color:var(--ink3)}
+table.data th.latest{color:var(--accent-ink)}
+table.data td.up,table.data tr.hl td.up{color:var(--up)} table.data td.down,table.data tr.hl td.down{color:var(--down)}
+.sparkTd{padding-top:4px!important;padding-bottom:0!important}
+.spark{display:block;margin-left:auto}
+.spark polyline{fill:none;stroke:var(--ink3);stroke-width:1.5;stroke-linejoin:round;stroke-linecap:round}
+.spark circle{fill:var(--accent)}
+.est{font-family:var(--font);font-size:10.5px;color:var(--warn);background:var(--warn-bg);border-radius:4px;padding:0 5px;margin-left:6px;white-space:nowrap}
+@media (max-width:640px){
+  table.data th,table.data td{padding:6px 10px}
+  table.data th:first-child,table.data td:first-child{min-width:132px;max-width:160px}
+  .filter{flex:1;width:auto;min-width:120px}
+  .brand span{display:none}
+  .coName{font-size:19px}
+}
+.note{font-size:12.5px;color:var(--ink3);line-height:1.7;margin:0 2px}
+.note b{color:var(--ink2);font-weight:600}
+.note a,.foot a{color:var(--accent);text-decoration:none}
+.note a:hover,.foot a:hover{text-decoration:underline}
+.empty{padding:36px 16px;text-align:center;color:var(--ink3)}
+.foot{border-top:1px solid var(--line);padding-top:14px;font-size:12px;color:var(--ink3);line-height:1.8}
+.foot b{color:var(--ink2)}
+
+/* 浮层 */
+#tip{position:fixed;z-index:60;pointer-events:none;background:var(--ink);color:var(--surface);font-size:12px;line-height:1.5;
+  padding:5px 9px;border-radius:6px;white-space:nowrap;transform:translate(-50%,-100%);margin-top:-8px}
+#tip b{font-family:var(--num);font-weight:600}
+#toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:70;
+  background:var(--ink);color:var(--surface);padding:9px 16px;border-radius:9px;font-size:13px;box-shadow:var(--shadow);max-width:calc(100vw - 32px)}
+@media (prefers-reduced-motion:reduce){.spin{animation-duration:2s}}
+@media print{.top,.rail,.tbar,.coActs,.foot,#toast{display:none!important}.tblWrap{max-height:none;overflow:visible}body{background:#fff}}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="topIn">
+    <div class="brand">
+      <div class="brandMark" aria-hidden="true"><i></i></div>
+      <b>财报四表</b><span>A 股近五年年报</span>
+    </div>
+    <form class="search" id="searchForm" role="search" autocomplete="off">
+      <div class="searchBox">
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14" stroke-linecap="round"/></svg>
+        <input id="q" type="search" placeholder="公司名称或股票代码，如 贵州茅台 / 600519" spellcheck="false" autocomplete="off"
+          role="combobox" aria-expanded="false" aria-controls="sug" aria-autocomplete="list" aria-label="搜索公司" />
+        <div class="sug" id="sug" role="listbox" hidden></div>
+      </div>
+      <button class="btn pri" id="go" type="submit">查询</button>
+    </form>
+    <button class="btn ghost icon" id="themeBtn" type="button" title="切换深色 / 浅色" aria-label="切换深色或浅色">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm0 12.5v-11a5.5 5.5 0 0 1 0 11Z"/></svg>
+    </button>
+  </div>
+</header>
+
+<main class="page">
+  <div class="rail" id="rail"></div>
+  <div class="status" id="status" hidden></div>
+
+  <section id="result" hidden style="display:flex;flex-direction:column;gap:14px">
+    <div class="card co">
+      <div class="coMain">
+        <div class="coLine">
+          <span class="coName" id="coName"></span>
+          <span class="coCode" id="coCode"></span>
+          <span class="tag" id="coMarket"></span>
+          <span class="tag" id="coType"></span>
+        </div>
+        <div class="coMeta" id="coMeta"></div>
+      </div>
+      <div class="coActs">
+        <button class="star" id="favBtn" type="button" aria-pressed="false" title="加入自选">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="m8 1.3 2 4.3 4.7.6-3.4 3.3.8 4.7L8 11.9l-4.1 2.3.8-4.7L1.3 6.2 6 5.6z"/></svg>
+        </button>
+        <button class="btn ghost sm" id="linkBtn" type="button">复制链接</button>
+        <a class="btn ghost sm" id="f10Btn" target="_blank" rel="noopener">东财 F10 原表</a>
+        <button class="btn pri sm" id="xlsxBtn" type="button">导出 Excel（全部四表）</button>
+      </div>
+    </div>
+
+    <div class="tabs" id="tabs" role="tablist">
+      <button class="tab" role="tab" data-tab="overview">概览</button>
+      <button class="tab" role="tab" data-tab="income">利润表</button>
+      <button class="tab" role="tab" data-tab="balance">资产负债表</button>
+      <button class="tab" role="tab" data-tab="cash">现金流量表</button>
+      <button class="tab" role="tab" data-tab="equity">所有者权益表<small>推算</small></button>
+    </div>
+
+    <div id="paneOverview" style="display:flex;flex-direction:column;gap:14px"></div>
+
+    <div id="paneTable" hidden style="display:flex;flex-direction:column;gap:10px">
+      <div class="tbar">
+        <span class="segLabel">单位</span>
+        <div class="seg" id="unitSeg">
+          <button type="button" data-v="yi">亿元</button><button type="button" data-v="wan">万元</button><button type="button" data-v="yuan">元</button>
+        </div>
+        <span class="segLabel">视图</span>
+        <div class="seg" id="viewSeg">
+          <button type="button" data-v="amt">金额</button><button type="button" data-v="yoy">同比%</button><button type="button" data-v="pct">结构%</button>
+        </div>
+        <div class="seg" id="orderSeg" title="年份排列方向（仅影响页面显示）">
+          <button type="button" data-v="desc">新→旧</button><button type="button" data-v="asc">旧→新</button>
+        </div>
+        <label class="tog"><input type="checkbox" id="hideEmpty" />隐藏空行</label>
+        <input class="filter" id="rowFilter" type="search" placeholder="筛选科目，如 存货" aria-label="筛选科目" />
+        <span class="barSpacer"></span>
+        <button class="btn ghost sm" id="copyBtn" type="button" title="复制整张表（固定模板），可直接粘贴到 Excel">复制表格</button>
+        <button class="btn ghost sm" id="csvBtn" type="button">下载 CSV</button>
+      </div>
+      <div class="tblWrap" id="tblWrap"></div>
+      <p class="note" id="tabNote"></p>
+    </div>
+  </section>
+
+  <footer class="foot">
+    <b>固定行次模板：</b>四张表的行数、行序、列数对任何公司都完全一致，导出的 Excel / 复制的表格可以直接整块粘贴到自己的取数表；页面上的「隐藏空行」「筛选」「视图」只影响显示，不影响导出。<br />
+    <b>所有者权益表为推算口径：</b>公开接口没有所有者权益变动表的逐行数据，本表由资产负债表权益科目、利润表归母净利润推算，倒挤行无法区分增发、回购与分红，需要原表请查公司年报。<br />
+    数据来自东方财富公开 F10 数据中心，仅年报（12-31）口径，暂不支持港股；仅供个人研究参考，不构成投资建议。
+  </footer>
+</main>
+
+<div id="tip" hidden></div>
+<div id="toast" role="status" aria-live="polite" hidden></div>
+
+<script>
+"use strict";
+/* ============ 常量 ============ */
+const FETCH_TIMEOUT = 20000;
+const MAX_YEARS = 5;          // 模板固定 5 个年报期
+const FETCH_YEARS = 8;        // 多取几年，用于最早一年的同比 / 年初数
+const DATACENTER = "https://datacenter.eastmoney.com/securities/api/data/v1/get";
+const SUGGEST = "https://searchapi.eastmoney.com/api/suggest/get";
+const RP = {
+  income:  ["RPT_F10_FINANCE_GINCOME", "RPT_F10_FINANCE_BINCOME", "RPT_F10_FINANCE_IINCOME", "RPT_F10_FINANCE_SINCOME"],
+  balance: ["RPT_F10_FINANCE_GBALANCE", "RPT_F10_FINANCE_BBALANCE", "RPT_F10_FINANCE_IBALANCE", "RPT_F10_FINANCE_SBALANCE"],
+  cash:    ["RPT_F10_FINANCE_GCASHFLOW", "RPT_F10_FINANCE_BCASHFLOW", "RPT_F10_FINANCE_ICASHFLOW", "RPT_F10_FINANCE_SCASHFLOW"]
+};
+const TYPE_NAME = ["一般企业报表", "银行报表", "保险报表", "证券报表"];
+const KIND_NAME = { overview: "概览", income: "利润表", balance: "资产负债表", cash: "现金流量表", equity: "所有者权益表" };
+const TABS = ["overview", "income", "balance", "cash", "equity"];
+const UNIT = { yi: [1e8, "亿元"], wan: [1e4, "万元"], yuan: [1, "元"] };
+const SAMPLES = [["600519.SH", "贵州茅台"], ["600036.SH", "招商银行"], ["300750.SZ", "宁德时代"], ["601318.SH", "中国平安"], ["002594.SZ", "比亚迪"], ["000333.SZ", "美的集团"]];
+const PREF_KEY = "cw4.prefs";
+
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+
+/* ============ 本地偏好（自选 / 最近 / 单位等，仅存本机浏览器） ============ */
+function lsGet(k) { try { return JSON.parse(localStorage.getItem(k) || "null"); } catch (e) { return null; } }
+function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* 忽略 */ } }
+const prefs = Object.assign({ unit: "yi", hideEmpty: true, order: "desc", theme: "", fav: [], recent: [] }, lsGet(PREF_KEY) || {});
+if (!Array.isArray(prefs.fav)) prefs.fav = [];
+if (!Array.isArray(prefs.recent)) prefs.recent = [];
+if (!UNIT[prefs.unit]) prefs.unit = "yi";
+function savePrefs() { lsSet(PREF_KEY, prefs); }
+
+const state = {
+  co: null, data: null, periods: {}, years: [],
+  tab: "overview", view: "amt", filter: "", token: 0, lastQuery: ""
+};
+const cache = new Map();
+
+/* ============ 工具 ============ */
+function esc(v) {
+  return String(v == null ? "" : v).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+function num(v) {
+  if (v === null || v === undefined || v === "" || v === "-") return NaN;
+  const n = typeof v === "number" ? v : Number(String(v).replace(/,/g, ""));
+  return Number.isFinite(n) ? n : NaN;
+}
+const ok = Number.isFinite;
+function fmtNum(x, digits) {
+  const s = Math.abs(x).toLocaleString("zh-CN", { minimumFractionDigits: digits, maximumFractionDigits: digits });
+  return x < 0 && Number(Math.abs(x).toFixed(digits)) !== 0 ? "(" + s + ")" : s;
+}
+function fmtMoney(v, unit) {
+  if (!ok(v)) return "—";
+  return fmtNum(v / UNIT[unit][0], unit === "yi" ? 2 : 0);
+}
+function fmtPct(v, signed) {
+  if (!ok(v)) return "—";
+  return (signed && v > 0 ? "+" : "") + v.toFixed(Math.abs(v) >= 1000 ? 0 : 2) + "%";
+}
+/* 概览里的大数字：自动选单位，不跟随表格的单位开关 */
+function fmtAuto(v) {
+  if (!ok(v)) return ["—", ""];
+  const a = Math.abs(v);
+  if (a >= 1e12) return [(v / 1e12).toFixed(2), "万亿"];
+  if (a >= 1e8) return [(v / 1e8).toFixed(a >= 1e11 ? 0 : a >= 1e10 ? 1 : 2), "亿"];
+  if (a >= 1e4) return [(v / 1e4).toFixed(0), "万"];
+  return [v.toFixed(0), "元"];
+}
+function yearOf(row) { return (row.REPORT_DATE || "").slice(0, 4); }
+function prevY(y) { return String(Number(y) - 1); }
+function yoy(cur, prev) {
+  if (!ok(cur) || !ok(prev) || prev === 0) return NaN;
+  return (cur - prev) / Math.abs(prev) * 100;
+}
+let toastTimer = 0;
+function toast(msg) {
+  const t = $("#toast");
+  t.textContent = msg; t.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.hidden = true; }, 2600);
+}
+
+/* ============ 字段字典（固定模板，行次不可改动） ============ */
+/*@@DICT@@*/
+
+/* ============ 网络：JSONP ============ */
+let seq = 0;
+function jsonp(url, cbParam = "callback", timeout = FETCH_TIMEOUT) {
+  return new Promise((resolve, reject) => {
+    const name = "cwcb_" + Date.now().toString(36) + "_" + (++seq);
+    const script = document.createElement("script");
+    let done = false;
+    const finish = (fn, arg) => {
+      if (done) return;
+      done = true; clearTimeout(timer);
+      window[name] = () => {};           // 迟到的回包不报错
+      setTimeout(() => { try { delete window[name]; } catch (e) { /* 忽略 */ } }, 60000);
+      script.remove();
+      fn(arg);
+    };
+    const timer = setTimeout(() => finish(reject, new Error("请求超时，数据接口 " + Math.round(timeout / 1000) + " 秒内没有响应")), timeout);
+    window[name] = payload => finish(resolve, payload);
+    script.onerror = () => finish(reject, new Error("连不上数据接口，请检查网络或稍后再试"));
+    script.src = url + (url.includes("?") ? "&" : "?") + cbParam + "=" + name;
+    document.head.appendChild(script);
+  });
+}
+
+/* ============ 股票名录（内置，离线联想） ============ */
+/*@@STOCKLIST@@*/
+const STOCKS = (window.__STOCK_LIST__ || "").split(";").map(s => {
+  const p = s.split(",");
+  return { code: p[0], name: p[1], mk: p[2], key: (p[1] || "").replace(/\s+/g, "").toUpperCase() };
+}).filter(x => x.code && x.name);
+window.__STOCK_LIST__ = null;
+const MK_NAME = { SH: "沪A", SZ: "深A", BJ: "京A", HK: "港股" };
+
+function inferMk(code) {
+  if (/^[0-9]{5}$/.test(code)) return "HK";
+  if (/^(6|9)/.test(code) && !/^92/.test(code)) return "SH";
+  if (/^(0|2|3)/.test(code)) return "SZ";
+  if (/^(8|4|92)/.test(code)) return "BJ";
+  return "SH";
+}
+function normKw(s) { return String(s || "").trim().toUpperCase().replace(/\s+/g, ""); }
+
+function suggest(keyword, limit = 8) {
+  const k = normKw(keyword).replace(/\.(SH|SZ|BJ|HK)$/, "");
+  if (!k) return [];
+  const a = [], b = [], c = [];
+  const isCode = /^[0-9]+$/.test(k);
+  for (const s of STOCKS) {
+    if (isCode) {
+      if (s.code.startsWith(k)) a.push(s); else if (s.code.includes(k)) c.push(s);
+    } else {
+      if (s.key === k) a.unshift(s);
+      else if (s.key.startsWith(k)) b.push(s);
+      else if (s.key.includes(k)) c.push(s);
+    }
+  }
+  if (isCode) { a.sort((x, y) => x.code.localeCompare(y.code)); c.sort((x, y) => x.code.localeCompare(y.code)); }
+  return a.concat(b, c).slice(0, limit);
+}
+
+/* 把输入解析成 {code, mk, name}；名录里没有的新股，退到代码直查和东财联想接口 */
+async function resolveCompany(keyword) {
+  const k = normKw(keyword);
+  const m = k.match(/^([0-9]{4,6})(?:\.(SH|SZ|BJ|HK))?$/);
+  if (m) {
+    const code = m[1];
+    const hit = STOCKS.find(x => x.code === code && (!m[2] || x.mk === m[2]));
+    if (hit) return { code: hit.code, mk: hit.mk, name: hit.name };
+    if (code.length === 6) return { code, mk: m[2] || inferMk(code), name: "" };
+    if (code.length <= 5) return { code: code.padStart(5, "0"), mk: "HK", name: "" };
+  }
+  const hit = suggest(k, 1)[0];
+  if (hit) return { code: hit.code, mk: hit.mk, name: hit.name };
+  try {
+    const j = await jsonp(SUGGEST + "?input=" + encodeURIComponent(keyword) + "&type=14&token=D43BF722C8E33BDC906FB84D85E326E8&count=5", "cb", 8000);
+    const list = (j && j.QuotationCodeTable && j.QuotationCodeTable.Data) || [];
+    const s = list.find(x => /^[0-9]{6}$/.test(x.Code || "") && /^(0|1)$/.test(String(x.MktNum))) ||
+              list.find(x => /^[0-9]{5}$/.test(x.Code || "") && String(x.MktNum) === "116");
+    if (s) return { code: s.Code, mk: s.Code.length === 5 ? "HK" : inferMk(s.Code), name: s.Name || "" };
+  } catch (e) { /* 联想接口不可用时按未找到处理 */ }
+  return null;
+}
+
+/* ============ 取数 ============ */
+async function fetchStatement(kind, secucode, firstIdx) {
+  const order = [0, 1, 2, 3];
+  if (firstIdx > 0) { order.splice(order.indexOf(firstIdx), 1); order.unshift(firstIdx); }
+  for (const idx of order) {
+    const rn = RP[kind][idx];
+    const params = [
+      "reportName=" + rn, "columns=ALL",
+      "filter=" + encodeURIComponent('(SECUCODE="' + secucode + '")(REPORT_TYPE="年报")'),
+      "pageNumber=1", "pageSize=" + FETCH_YEARS, "sortTypes=-1", "sortColumns=REPORT_DATE", "source=F10", "client=PC"
+    ].join("&");
+    let j;
+    try { j = await jsonp(DATACENTER + "?" + params); }
+    catch (e) { j = await jsonp(DATACENTER + "?" + params); }   // 偶发失败重试一次
+    const rows = (((j || {}).result || {}).data) || [];
+    const seen = new Set();
+    const annual = rows.filter(r => {
+      const d = r.REPORT_DATE || "";
+      if (!d.slice(0, 10).endsWith("-12-31") || seen.has(d)) return false;
+      seen.add(d); return true;
+    });
+    if (annual.length) return { rows: annual, reportName: rn, idx };
+  }
+  return { rows: [], reportName: RP[kind][0], idx: -1 };
+}
+
+async function fetchCompany(secucode) {
+  if (cache.has(secucode)) return cache.get(secucode);
+  const inc = await fetchStatement("income", secucode, 0);        // 先用利润表确定报表类型
+  const first = Math.max(inc.idx, 0);
+  const [bal, csh] = await Promise.all([fetchStatement("balance", secucode, first), fetchStatement("cash", secucode, first)]);
+  const data = { income: inc, balance: bal, cash: csh, at: Date.now() };
+  if (inc.rows.length || bal.rows.length || csh.rows.length) cache.set(secucode, data);
+  return data;
+}
+
+async function loadCompany(keyword) {
+  const kw = String(keyword || "").trim();
+  if (!kw) { $("#q").focus(); return; }
+  const token = ++state.token;
+  state.lastQuery = kw;
+  closeSug();
+  $("#go").disabled = true;
+  setStatus("正在查找「" + esc(kw) + "」…", "spin");
+  try {
+    const t = await resolveCompany(kw);
+    if (token !== state.token) return;
+    if (!t) throw new Error("没有找到「" + kw + "」。可以换成 6 位股票代码（如 600519）或公司简称再试。");
+    if (t.mk === "HK") throw new Error("「" + (t.name || t.code) + "」是港股。港股报表是另一套口径，本工具暂不支持，请换一家 A 股公司。");
+    const secucode = t.code + "." + t.mk;
+    setStatus("正在调取 <b>" + esc(t.name || secucode) + "</b> 的近五年年报…", "spin");
+    const data = await fetchCompany(secucode);
+    if (token !== state.token) return;
+    const all = data.income.rows.concat(data.balance.rows, data.cash.rows);
+    if (!all.length) throw new Error("接口没有返回 " + secucode + " 的年报数据，可能是刚上市、已退市或代码有误。");
+
+    const periods = {};
+    ["income", "balance", "cash"].forEach(k => {
+      periods[k] = {};
+      data[k].rows.forEach(r => { periods[k][yearOf(r)] = r; });
+    });
+    const years = [...new Set(all.map(yearOf))].filter(Boolean).sort((a, b) => b.localeCompare(a)).slice(0, MAX_YEARS);
+    const name = t.name || (all[0] && all[0].SECURITY_NAME_ABBR) || secucode;
+    const typeIdx = [data.balance.idx, data.income.idx, data.cash.idx].find(i => i >= 0);
+    state.co = { name, code: t.code, mk: t.mk, secucode, typeIdx: typeIdx == null ? 0 : typeIdx };
+    state.data = data; state.periods = periods; state.years = years;
+    state.filter = ""; $("#rowFilter").value = "";
+
+    prefs.recent = [{ c: secucode, n: name }].concat(prefs.recent.filter(x => x.c !== secucode)).slice(0, 8);
+    savePrefs();
+    $("#q").value = name;
+    const miss = ["income", "balance", "cash"].filter(k => !data[k].rows.length).map(k => KIND_NAME[k]);
+    if (miss.length) setStatus("未取到：" + miss.join("、") + "。其余报表已显示，可稍后点「查询」重试。", "warn");
+    else setStatus("", "");
+    $("#result").hidden = false;
+    renderAll();
+    syncUrl();
+  } catch (e) {
+    if (token !== state.token) return;
+    setStatus(esc(e && e.message ? e.message : String(e)) + ' <button class="btn ghost sm" type="button" id="retryBtn">重试</button>', "error");
+  } finally {
+    if (token === state.token) $("#go").disabled = false;
+  }
+}
+
+function setStatus(html, kind) {
+  const el = $("#status");
+  if (!html) { el.hidden = true; el.innerHTML = ""; return; }
+  el.hidden = false;
+  el.className = "status" + (kind === "error" ? " err" : "");
+  el.innerHTML = (kind === "spin" ? '<span class="spin"></span>' : "") + "<span>" + html + "</span>";
+}
+
+/* ============ 取值 ============ */
+const CALC_FIELDS = {
+  "~CREDIT_IMPAIRMENT": r => {
+    const inc = num(r.CREDIT_IMPAIRMENT_INCOME), loss = num(r.CREDIT_IMPAIRMENT_LOSS);
+    if (!ok(inc) && !ok(loss)) return NaN;
+    return (ok(inc) ? inc : 0) - (ok(loss) ? loss : 0);
+  },
+  "~ASSET_IMPAIRMENT": r => {
+    const inc = num(r.ASSET_IMPAIRMENT_INCOME), loss = num(r.ASSET_IMPAIRMENT_LOSS);
+    if (!ok(inc) && !ok(loss)) return NaN;
+    return (ok(inc) ? inc : 0) - (ok(loss) ? loss : 0);
+  }
+};
+function fieldValue(r, key) {
+  if (!r) return NaN;
+  if (key.charAt(0) === "~") { const fn = CALC_FIELDS[key]; return fn ? fn(r) : NaN; }
+  return num(r[key]);
+}
+function gv(kind, y, key) { return fieldValue((state.periods[kind] || {})[y], key); }
+function first(...vals) { for (const v of vals) if (ok(v)) return v; return NaN; }
+const revenue = y => first(gv("income", y, "TOTAL_OPERATE_INCOME"), gv("income", y, "OPERATE_INCOME"));
+const parentNP = y => first(gv("income", y, "PARENT_NETPROFIT"), gv("income", y, "NETPROFIT"));
+const parentEq = y => first(gv("balance", y, "TOTAL_PARENT_EQUITY"), gv("balance", y, "TOTAL_EQUITY"));
+function avgBal(fn, y) { const e = fn(y), b = fn(prevY(y)); return ok(e) && ok(b) ? (e + b) / 2 : e; }
+function ratio(a, b, mul = 100) { return ok(a) && ok(b) && b !== 0 ? a / b * mul : NaN; }
+
+/* 模板行：字典里的每一行都输出，缺数据留空，保证任何公司行次一致。vals 覆盖全部已取年份（含第 6 年） */
+function buildRows(kind) {
+  const ys = Object.keys(state.periods[kind] || {});
+  return (DICT[kind] || []).map(([key, label]) => {
+    if (key === "s") return { type: "sec", label };
+    const vals = {};
+    ys.forEach(y => { const v = gv(kind, y, key); if (ok(v)) vals[y] = v; });
+    return {
+      type: "row", key, label, vals,
+      eps: /_EPS$/.test(key),
+      hl: /合计|总计|现金流量净额|净利润|营业利润|利润总额/.test(label),
+      sub: /^(其中：|加：|减：)/.test(label)
+    };
+  });
+}
+
+/* ============ 财务指标 ============ */
+const METRICS = [
+  ["g", "成长"],
+  ["revYoy", "营业收入同比", "pct", y => yoy(revenue(y), revenue(prevY(y)))],
+  ["npYoy", "归母净利润同比", "pct", y => yoy(parentNP(y), parentNP(prevY(y)))],
+  ["g", "盈利"],
+  ["gm", "毛利率", "pct", y => { const r = gv("income", y, "OPERATE_INCOME"), c = gv("income", y, "OPERATE_COST"); return ok(c) ? ratio(r - c, r) : NaN; }],
+  ["nm", "净利率", "pct", y => ratio(gv("income", y, "NETPROFIT"), revenue(y))],
+  ["roe", "净资产收益率 ROE（平均）", "pct", y => ratio(parentNP(y), avgBal(parentEq, y))],
+  ["roa", "总资产收益率 ROA（平均）", "pct", y => ratio(gv("income", y, "NETPROFIT"), avgBal(yy => gv("balance", yy, "TOTAL_ASSETS"), y))],
+  ["fee", "期间费用率", "pct", y => {
+    const parts = ["SALE_EXPENSE", "MANAGE_EXPENSE", "RESEARCH_EXPENSE", "FINANCE_EXPENSE"].map(k => gv("income", y, k));
+    return parts.some(ok) ? ratio(parts.reduce((s, v) => s + (ok(v) ? v : 0), 0), revenue(y)) : NaN;
+  }],
+  ["rd", "研发费用率", "pct", y => ratio(gv("income", y, "RESEARCH_EXPENSE"), revenue(y))],
+  ["g", "偿债与营运"],
+  ["lev", "资产负债率", "pct", y => ratio(gv("balance", y, "TOTAL_LIABILITIES"), gv("balance", y, "TOTAL_ASSETS"))],
+  ["cur", "流动比率（倍）", "x", y => ratio(gv("balance", y, "TOTAL_CURRENT_ASSETS"), gv("balance", y, "TOTAL_CURRENT_LIAB"), 1)],
+  ["turn", "总资产周转率（次）", "x", y => ratio(revenue(y), avgBal(yy => gv("balance", yy, "TOTAL_ASSETS"), y), 1)],
+  ["g", "现金"],
+  ["ocf", "经营活动现金流净额", "money", y => gv("cash", y, "NETCASH_OPERATE")],
+  ["cashNp", "净现比（经营现金流 ÷ 净利润，倍）", "x", y => ratio(gv("cash", y, "NETCASH_OPERATE"), gv("income", y, "NETPROFIT"), 1)],
+  ["fcf", "自由现金流（经营现金流 − 购建长期资产）", "money", y => { const o = gv("cash", y, "NETCASH_OPERATE"), c = gv("cash", y, "CONSTRUCT_LONG_ASSET"); return ok(o) ? o - (ok(c) ? c : 0) : NaN; }],
+  ["div", "分配股利、利润或偿付利息支付的现金", "money", y => gv("cash", y, "ASSIGN_DIVIDEND_PORFIT")]
+];
+function metricFn(id) { return METRICS.find(m => m[0] === id)[3]; }
+function fmtMetric(v, kind, unit) {
+  if (!ok(v)) return "—";
+  if (kind === "pct") return fmtPct(v);
+  if (kind === "x") return v.toFixed(2);
+  return fmtMoney(v, unit);
+}
+
+/* ============ 概览 ============ */
+function kpiDefs() {
+  const hasGm = state.years.some(y => ok(metricFn("gm")(y)));
+  return [
+    { label: "营业收入", fn: revenue, kind: "money" },
+    { label: "归母净利润", fn: parentNP, kind: "money" },
+    { label: "经营活动现金流净额", fn: y => gv("cash", y, "NETCASH_OPERATE"), kind: "money" },
+    { label: "净资产收益率 ROE", fn: metricFn("roe"), kind: "pct", sub: "归母净利润 ÷ 平均归母权益" },
+    hasGm ? { label: "毛利率", fn: metricFn("gm"), kind: "pct", sub: "(营业收入 − 营业成本) ÷ 营业收入" }
+          : { label: "净利率", fn: metricFn("nm"), kind: "pct", sub: "净利润 ÷ 营业总收入" },
+    { label: "资产负债率", fn: metricFn("lev"), kind: "pct", sub: "负债合计 ÷ 资产总计" }
+  ];
+}
+function deltaChip(d, isPp) {
+  if (!ok(d)) return '<span class="delta flat">同比 —</span>';
+  const cls = d > 0 ? "up" : d < 0 ? "down" : "flat";
+  const arrow = d > 0 ? "▲" : d < 0 ? "▼" : "";
+  const txt = isPp ? Math.abs(d).toFixed(2) + " 个百分点" : Math.abs(d).toFixed(Math.abs(d) >= 1000 ? 0 : 2) + "%";
+  return '<span class="delta ' + cls + '" title="较上年' + (d > 0 ? "增加" : d < 0 ? "减少" : "持平") + '">' + arrow + " " + txt + "</span>";
+}
+/* 五年柱图：时间从左到右，最新一年用主色强调 */
+function barsSvg(points, fmt) {
+  const W = 300, H = 92, padT = 6, padB = 16, n = points.length, slot = W / n, bw = Math.min(34, slot * 0.56);
+  const vals = points.map(p => p.v).filter(ok);
+  if (!vals.length) return '<div class="kpiSub" style="padding:22px 0">暂无数据</div>';
+  const max = Math.max(0, ...vals), min = Math.min(0, ...vals), span = (max - min) || 1;
+  const plotH = H - padT - padB, y0 = padT + plotH * (max / span);
+  let g = '<line class="base" x1="0" x2="' + W + '" y1="' + y0.toFixed(1) + '" y2="' + y0.toFixed(1) + '"/>';
+  points.forEach((p, i) => {
+    const cx = slot * i + slot / 2;
+    let bar = "";
+    if (ok(p.v)) {
+      const h = Math.max(1.5, Math.abs(p.v) / span * plotH), y = p.v >= 0 ? y0 - h : y0, r = Math.min(3, h);
+      const x = cx - bw / 2;
+      const d = p.v >= 0
+        ? "M" + x + "," + (y + h) + "V" + (y + r) + "q0,-" + r + " " + r + ",-" + r + "h" + (bw - 2 * r) + "q" + r + ",0 " + r + "," + r + "V" + (y + h) + "z"
+        : "M" + x + "," + y + "V" + (y + h - r) + "q0," + r + " " + r + "," + r + "h" + (bw - 2 * r) + "q" + r + ",0 " + r + ",-" + r + "V" + y + "z";
+      bar = '<path class="bar' + (i === n - 1 ? " last" : "") + '" d="' + d + '"/>';
+    }
+    g += '<g tabindex="0" data-tip="' + esc(p.y + " 年　<b>" + (ok(p.v) ? fmt(p.v) : "无数据") + "</b>") + '">' + bar +
+      '<rect class="hit" x="' + (slot * i) + '" y="0" width="' + slot + '" height="' + H + '"/>' +
+      '<text x="' + cx + '" y="' + (H - 3) + '" text-anchor="middle">' + esc(p.y) + "</text></g>";
+  });
+  return '<svg class="bars" viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="近五年走势">' + g + "</svg>";
+}
+function checkItems() {
+  const tol = (a, b) => Math.abs(a - b) <= Math.max(100, Math.abs(a) * 1e-6);
+  const defs = [
+    ["资产 = 负债 + 所有者权益", y => [gv("balance", y, "TOTAL_ASSETS"), gv("balance", y, "TOTAL_LIABILITIES") + gv("balance", y, "TOTAL_EQUITY")]],
+    ["负债和所有者权益总计 = 资产总计", y => [gv("balance", y, "TOTAL_LIAB_EQUITY"), gv("balance", y, "TOTAL_ASSETS")]],
+    ["期末现金 = 期初现金 + 净增加额", y => [gv("cash", y, "END_CCE"), gv("cash", y, "BEGIN_CCE") + gv("cash", y, "CCE_ADD")]],
+    ["净利润 = 归母净利润 + 少数股东损益", y => [gv("income", y, "NETPROFIT"), gv("income", y, "PARENT_NETPROFIT") + first(gv("income", y, "MINORITY_INTEREST"), 0)]]
+  ];
+  return defs.map(([label, fn]) => {
+    let pass = 0, total = 0; const bad = [];
+    state.years.forEach(y => {
+      const [a, b] = fn(y);
+      if (!ok(a) || !ok(b)) return;
+      total++;
+      if (tol(a, b)) pass++; else bad.push(y + " 年差 " + fmtMoney(a - b, "yi") + " 亿元");
+    });
+    return { label, pass, total, bad };
+  });
+}
+function renderOverview() {
+  const years = state.years, asc = years.slice().reverse(), y0 = years[0];
+  const el = $("#paneOverview");
+  if (!y0) { el.innerHTML = '<div class="card empty">暂无数据</div>'; return; }
+  let html = '<div class="kpis">';
+  kpiDefs().forEach(k => {
+    const cur = k.fn(y0), prev = k.fn(prevY(y0));
+    const fmt = k.kind === "pct" ? v => v.toFixed(2) + "%" : v => { const [a, u] = fmtAuto(v); return a + " " + u; };
+    const big = k.kind === "pct" ? [ok(cur) ? cur.toFixed(2) : "—", ok(cur) ? "%" : ""] : fmtAuto(cur);
+    const chip = k.kind === "pct" ? deltaChip(ok(cur) && ok(prev) ? cur - prev : NaN, true) : deltaChip(yoy(cur, prev), false);
+    html += '<div class="card kpi"><div class="kpiTop"><span class="kpiLabel">' + esc(k.label) + "</span>" + chip + "</div>" +
+      '<div class="kpiVal">' + esc(big[0]) + "<small>" + esc(big[1]) + "</small></div>" +
+      '<div class="kpiSub">' + esc(y0 + " 年报" + (k.sub ? " · " + k.sub : "")) + "</div>" +
+      barsSvg(asc.map(y => ({ y, v: k.fn(y) })), fmt) + "</div>";
+  });
+  html += "</div>";
+
+  html += '<div class="secTitle"><h2>财务指标</h2><span>由三张主表计算，金额单位：' + UNIT[prefs.unit][1] + "；ROE、ROA、周转率的分母取年初年末平均</span></div>";
+  html += '<div class="tblWrap" style="max-height:none"><table class="data"><thead><tr><th>指标</th>' +
+    years.map((y, i) => '<th class="' + (i === 0 ? "latest" : "") + '">' + y + "</th>").join("") + "</tr></thead><tbody>";
+  METRICS.forEach(m => {
+    if (m[0] === "g") { html += '<tr class="sec"><td colspan="' + (years.length + 1) + '">' + esc(m[1]) + "</td></tr>"; return; }
+    const vals = years.map(y => m[3](y));
+    if (!vals.some(ok)) return;
+    html += "<tr><td>" + esc(m[1]) + "</td>" + vals.map(v => {
+      const cls = !ok(v) ? "dim" : (m[0] === "revYoy" || m[0] === "npYoy") ? (v > 0 ? "up" : v < 0 ? "down" : "") : "";
+      const txt = (m[0] === "revYoy" || m[0] === "npYoy") ? fmtPct(v, true) : fmtMetric(v, m[2], prefs.unit);
+      return '<td class="' + cls + '">' + txt + "</td>";
+    }).join("") + "</tr>";
+  });
+  html += "</tbody></table></div>";
+
+  html += '<div class="secTitle"><h2>勾稽校验</h2><span>检查取回的数据在三张表之间是否对得上（容差 100 元）</span></div>';
+  html += '<div class="card checksWrap"><div class="checks">';
+  checkItems().forEach(c => {
+    const st = !c.total ? "" : c.pass === c.total ? "ok" : "bad";
+    const txt = !c.total ? "缺少字段，未校验" : c.pass === c.total ? c.total + " 个年度全部平衡" : c.bad.join("；");
+    html += '<div class="check"><b><span class="dot ' + st + '"></span>' + esc(c.label) + "</b><p>" + esc(txt) + "</p></div>";
+  });
+  html += "</div></div>";
+  html += '<p class="note">同比涨跌按 A 股习惯着色：<span style="color:var(--up)">红色为增长</span>，<span style="color:var(--down)">绿色为下降</span>。银行、保险、证券公司的毛利率、流动比率等指标不适用，会自动隐藏。</p>';
+  el.innerHTML = html;
+}
+
+/* ============ 报表表格 ============ */
+function sparkSvg(vals) {
+  const pts = vals.map((v, i) => [i, v]).filter(p => ok(p[1]));
+  if (pts.length < 2) return "";
+  const W = 60, H = 20, pad = 3, n = vals.length;
+  const min = Math.min(...pts.map(p => p[1])), max = Math.max(...pts.map(p => p[1])), span = (max - min) || 1;
+  const xy = pts.map(p => [pad + p[0] * (W - 2 * pad) / (n - 1), max === min ? H / 2 : H - pad - (p[1] - min) / span * (H - 2 * pad)]);
+  const last = xy[xy.length - 1];
+  return '<svg class="spark" width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + " " + H + '" aria-hidden="true"><polyline points="' +
+    xy.map(p => p[0].toFixed(1) + "," + p[1].toFixed(1)).join(" ") + '"/><circle cx="' + last[0].toFixed(1) + '" cy="' + last[1].toFixed(1) + '" r="2.2"/></svg>';
+}
+function pctBase(kind, y) {
+  if (kind === "income") return revenue(y);
+  if (kind === "balance") return gv("balance", y, "TOTAL_ASSETS");
+  return NaN;
+}
+function renderStatement(kind) {
+  const years5 = state.years.slice();
+  const cols = prefs.order === "asc" ? years5.slice().reverse() : years5;
+  const latest = state.years[0];
+  const view = kind === "cash" && state.view === "pct" ? "amt" : state.view;
+  const f = normKw(state.filter);
+  const rows = buildRows(kind);
+  const extra = view === "amt";
+  const ncol = cols.length + 1 + (extra ? 2 : 0);
+  let html = '<table class="data"><thead><tr><th>项目</th>' +
+    cols.map(y => '<th class="' + (y === latest ? "latest" : "") + '">' + y + " 年报</th>").join("");
+  if (extra) html += '<th title="最新一期较上年">最新同比</th><th>五年趋势</th>';
+  html += "</tr></thead><tbody>";
+  let shown = 0, hidden = 0, pendingSec = null;
+  rows.forEach(r => {
+    if (r.type === "sec") { pendingSec = r; return; }
+    const has = years5.some(y => ok(r.vals[y]));
+    if (f && !normKw(r.label).includes(f)) return;
+    if (prefs.hideEmpty && !has) { hidden++; return; }
+    if (pendingSec) { html += '<tr class="sec"><td colspan="' + ncol + '">' + esc(pendingSec.label) + "</td></tr>"; pendingSec = null; }
+    shown++;
+    html += '<tr class="' + (r.hl ? "hl" : "") + (r.sub ? " sub" : "") + (has ? "" : " zero") + '"><td>' + esc(r.label) + "</td>";
+    cols.forEach(y => {
+      const v = r.vals[y];
+      if (view === "yoy") {
+        const p = yoy(v, r.vals[prevY(y)]);
+        html += '<td class="' + (!ok(p) ? "dim" : p > 0 ? "up" : p < 0 ? "down" : "") + '">' + fmtPct(p, true) + "</td>";
+      } else if (view === "pct") {
+        const p = r.eps ? NaN : ratio(v, pctBase(kind, y));
+        html += '<td class="' + (ok(p) ? "" : "dim") + '">' + fmtPct(p) + "</td>";
+      } else {
+        html += '<td class="' + (ok(v) ? "" : "dim") + '">' + (r.eps ? (ok(v) ? v.toFixed(2) : "—") : fmtMoney(v, prefs.unit)) + "</td>";
+      }
+    });
+    if (extra) {
+      const p = yoy(r.vals[latest], r.vals[prevY(latest)]);
+      html += '<td class="' + (!ok(p) ? "dim" : p > 0 ? "up" : p < 0 ? "down" : "") + '">' + fmtPct(p, true) + "</td>";
+      html += '<td class="sparkTd">' + sparkSvg(years5.slice().reverse().map(y => r.vals[y])) + "</td>";
+    }
+    html += "</tr>";
+  });
+  html += "</tbody></table>";
+  if (!shown) html = '<div class="empty">' + (f ? "没有匹配「" + esc(state.filter) + "」的科目。" : "该表暂无可用数据。") + "</div>";
+  return { html, hidden, view };
+}
+
+/* ============ 所有者权益表（推算，行次固定） ============ */
+const EQ_COMPONENTS = [
+  ["SHARE_CAPITAL", "实收资本（或股本）"], ["OTHER_EQUITY_TOOL", "其他权益工具"], ["CAPITAL_RESERVE", "资本公积"],
+  ["TREASURY_SHARES", "库存股"], ["OTHER_COMPRE_INCOME", "其他综合收益"], ["SPECIAL_RESERVE", "专项储备"],
+  ["SURPLUS_RESERVE", "盈余公积"], ["GENERAL_RISK_RESERVE", "一般风险准备"], ["UNASSIGN_RPOFIT", "未分配利润"],
+  ["MINORITY_EQUITY", "少数股东权益"]
+];
+function buildEquityTable() {
+  const years = state.years;
+  const np = y => gv("income", y, "PARENT_NETPROFIT");
+  const oci = y => gv("income", y, "OTHER_COMPRE_INCOME");
+  const div = y => gv("cash", y, "ASSIGN_DIVIDEND_PORFIT");
+  const beginIsEst = y => !ok(parentEq(prevY(y)));
+  const parentBegin = y => {
+    const p = parentEq(prevY(y));
+    if (ok(p)) return p;
+    // 没有上年报表时：期末 − 归母净利润 − 其他综合收益 + 现金分红，反推年初
+    const e = parentEq(y), n = np(y), o = oci(y), d = div(y);
+    if (!ok(e) || !ok(n)) return NaN;
+    return e - n - (ok(o) ? o : 0) + (ok(d) ? d : 0);
+  };
+  const rows = [];
+  const push = (label, fn, opt = {}) => rows.push(Object.assign({ label, vals: years.reduce((o, y) => (o[y] = fn(y), o), {}) }, opt));
+  const est = years.filter(beginIsEst);
+  push("一、上年年末余额（归母权益）", parentBegin, { hl: true, est });
+  push("二、本年年初余额", parentBegin, { hl: true, est });
+  push("加：归属于母公司股东的净利润", np, { hl: true });
+  push("加：其他综合收益（税后）", oci);
+  push("所有者投入和减少资本、利润分配等（推算倒挤）", y => {
+    const b = parentBegin(y), e = parentEq(y), n = np(y), o = oci(y);
+    if (!ok(b) || !ok(e) || !ok(n)) return NaN;
+    return e - b - n - (ok(o) ? o : 0);
+  }, { derived: true });
+  push("三、本年年末余额（归母权益）", parentEq, { hl: true });
+  EQ_COMPONENTS.forEach(([k, label]) => {
+    const neg = k === "TREASURY_SHARES";
+    push(neg ? "其中：库存股（以负数列示）" : "其中：" + label + "期末余额",
+      y => { const v = gv("balance", y, k); return neg && ok(v) ? -v : v; }, { sub: true });
+  });
+  push("所有者权益合计（含少数股东）期末", y => gv("balance", y, "TOTAL_EQUITY"), { hl: true });
+  return rows;
+}
+function renderEquity() {
+  const cols = prefs.order === "asc" ? state.years.slice().reverse() : state.years;
+  const f = normKw(state.filter);
+  let hidden = 0, shown = 0;
+  let html = '<table class="data"><thead><tr><th>项目（推算口径）</th>' +
+    cols.map(y => '<th class="' + (y === state.years[0] ? "latest" : "") + '">' + y + " 年报</th>").join("") + "</tr></thead><tbody>";
+  buildEquityTable().forEach(r => {
+    const has = state.years.some(y => ok(r.vals[y]));
+    if (f && !normKw(r.label).includes(f)) return;
+    if (prefs.hideEmpty && !has) { hidden++; return; }
+    shown++;
+    html += '<tr class="' + (r.hl ? "hl" : "") + (r.sub ? " sub" : "") + '"><td>' + esc(r.label) + (r.derived ? '<span class="est">倒挤</span>' : "") + "</td>";
+    cols.forEach(y => {
+      const v = r.vals[y];
+      html += '<td class="' + (ok(v) ? "" : "dim") + '">' + fmtMoney(v, prefs.unit) +
+        (r.est && r.est.includes(y) && ok(v) ? '<span class="est">反推</span>' : "") + "</td>";
+    });
+    html += "</tr>";
+  });
+  html += "</tbody></table>";
+  if (!shown) html = '<div class="empty">没有匹配的科目。</div>';
+  return { html, hidden, view: "amt" };
+}
+
+/* ============ 渲染调度 ============ */
+function setSeg(id, val) { $$("#" + id + " button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.v === val))); }
+function renderRail() {
+  const cur = state.co && state.co.secucode;
+  const chip = x => '<button class="chip' + (x.c === cur ? " on" : "") + '" type="button" data-q="' + esc(x.c) + '">' + esc(x.n) + "</button>";
+  let html = "";
+  if (prefs.fav.length) html += '<div class="railGroup"><span class="railLabel">自选</span>' + prefs.fav.map(chip).join("") + "</div>";
+  const rec = prefs.recent.filter(x => !prefs.fav.some(f => f.c === x.c)).slice(0, 6);
+  if (rec.length) html += '<div class="railGroup"><span class="railLabel">最近</span>' + rec.map(chip).join("") + "</div>";
+  const used = new Set(prefs.fav.concat(rec).map(x => x.c));
+  const smp = SAMPLES.filter(s => !used.has(s[0])).slice(0, Math.max(0, 6 - used.size));
+  if (smp.length) html += '<div class="railGroup"><span class="railLabel">试试</span>' + smp.map(s => chip({ c: s[0], n: s[1] })).join("") + "</div>";
+  $("#rail").innerHTML = html;
+}
+function renderHeader() {
+  const c = state.co, d = state.data;
+  $("#coName").textContent = c.name;
+  $("#coCode").textContent = c.secucode;
+  $("#coMarket").textContent = MK_NAME[c.mk] || "A股";
+  $("#coType").textContent = TYPE_NAME[c.typeIdx] || TYPE_NAME[0];
+  const r0 = d.balance.rows[0] || d.income.rows[0] || {};
+  const ys = state.years;
+  const meta = [
+    "年报 " + ys[ys.length - 1] + "–" + ys[0] + "（" + ys.length + " 期）",
+    r0.NOTICE_DATE ? "最新年报披露 " + String(r0.NOTICE_DATE).slice(0, 10) : "",
+    r0.CURRENCY ? "币种 " + r0.CURRENCY : "",
+    r0.OPINION_TYPE ? "审计意见 " + r0.OPINION_TYPE : "",
+    "取数 " + new Date(d.at).toLocaleString("zh-CN", { hour12: false })
+  ].filter(Boolean);
+  $("#coMeta").innerHTML = meta.map(m => "<span>" + esc(m) + "</span>").join("");
+  const on = prefs.fav.some(x => x.c === c.secucode);
+  const fb = $("#favBtn");
+  fb.classList.toggle("on", on); fb.setAttribute("aria-pressed", String(on)); fb.title = on ? "取消自选" : "加入自选";
+  const pref = c.mk;
+  $("#f10Btn").href = "https://emweb.securities.eastmoney.com/PC_HSF10/NewFinanceAnalysis/Index?type=web&code=" + pref + c.code;
+  document.title = c.name + " · 财报四表查询";
+}
+function renderTab() {
+  if (!state.data) return;
+  const kind = state.tab;
+  $$("#tabs .tab").forEach(t => t.setAttribute("aria-selected", String(t.dataset.tab === kind)));
+  const isOv = kind === "overview";
+  $("#paneOverview").hidden = !isOv;
+  $("#paneTable").hidden = isOv;
+  if (isOv) { renderOverview(); return; }
+  const res = kind === "equity" ? renderEquity() : renderStatement(kind);
+  setSeg("unitSeg", prefs.unit); setSeg("viewSeg", res.view); setSeg("orderSeg", prefs.order);
+  $$("#viewSeg button").forEach(b => { b.disabled = (kind === "equity" && b.dataset.v !== "amt") || (kind === "cash" && b.dataset.v === "pct"); });
+  $$("#unitSeg button").forEach(b => { b.disabled = res.view !== "amt"; });
+  $("#hideEmpty").checked = !!prefs.hideEmpty;
+  $("#tblWrap").innerHTML = res.html;
+  const total = kind === "equity" ? 17 : DICT[kind].filter(r => r[0] !== "s").length;
+  const viewNote = res.view === "yoy" ? "同比% = 本年较上年的增减幅度，红增绿减。"
+    : res.view === "pct" ? (kind === "income" ? "结构% = 各科目占营业总收入的比例。" : "结构% = 各科目占资产总计的比例。")
+    : "金额单位：人民币" + UNIT[prefs.unit][1] + "，负数用括号表示；每股收益单位为元。";
+  const src = kind === "equity" ? "" : "数据表 " + ((state.data[kind] || {}).reportName || "—") + "。";
+  $("#tabNote").innerHTML = viewNote + " 固定模板共 <b>" + total + "</b> 行" +
+    (res.hidden ? "，已隐藏 <b>" + res.hidden + "</b> 个无数据的行（导出和复制仍是完整模板，空值填 0）" : "") + "。" + src +
+    (kind === "equity" ? " 本表不是年报原表：年末余额取自资产负债表，净利润和其他综合收益取自利润表，「倒挤」行 = 年末 − 年初 − 净利润 − 其他综合收益。" : "");
+}
+function renderAll() { renderRail(); renderHeader(); renderTab(); }
+function syncUrl() {
+  if (!state.co) return;
+  try {
+    const u = new URL(location.href);
+    u.searchParams.set("q", state.co.secucode);
+    if (state.tab === "overview") u.searchParams.delete("tab"); else u.searchParams.set("tab", state.tab);
+    history.replaceState(null, "", u);
+  } catch (e) { /* file:// 等环境忽略 */ }
+}
+
+/* ============ 导出：固定模板数据 ============ */
+function templateYears() { const ys = state.years.slice(0, 5); while (ys.length < 5) ys.push(""); return ys; }
+function tableMatrix(kind) {
+  const years = templateYears(), div = UNIT[prefs.unit][0];
+  const out = [];
+  if (kind === "equity") {
+    out.push(["项目（推算口径）"].concat(years.map(y => y ? y + "年报" : "—")));
+    buildEquityTable().forEach(r => out.push([r.label].concat(years.map(y => ok(r.vals[y]) ? r.vals[y] / div : ""))));
+  } else {
+    out.push(["项目"].concat(years.map(y => y ? y + "年报" : "—")));
+    buildRows(kind).forEach(r => {
+      if (r.type === "sec") { out.push(["【" + r.label + "】"]); return; }
+      out.push([r.label].concat(years.map(y => ok(r.vals[y]) ? (r.eps ? r.vals[y] : r.vals[y] / div) : "")));
+    });
+  }
+  return out;
+}
+function saveBlob(blob, filename) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+function fileStem(kind) {
+  const ys = templateYears();
+  return state.co.name + "_" + KIND_NAME[kind] + "_" + (ys[4] || ys.filter(Boolean).pop() || "") + "-" + (ys[0] || "");
+}
+function downloadCsv() {
+  if (!state.data || state.tab === "overview") return;
+  const q = s => '"' + String(s == null ? "" : s).replace(/"/g, '""') + '"';
+  const text = tableMatrix(state.tab).map(r => r.map(q).join(",")).join("\r\n");
+  saveBlob(new Blob(["﻿" + text], { type: "text/csv;charset=utf-8" }), fileStem(state.tab) + ".csv");
+  toast("已下载 " + KIND_NAME[state.tab] + " CSV（单位：" + UNIT[prefs.unit][1] + "）");
+}
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); return true; }
+  catch (e) {
+    const ta = document.createElement("textarea");
+    ta.value = text; ta.style.cssText = "position:fixed;left:-9999px;top:0";
+    document.body.appendChild(ta); ta.select();
+    let done = false;
+    try { done = document.execCommand("copy"); } catch (e2) { done = false; }
+    ta.remove();
+    return done;
+  }
+}
+async function copyTable() {
+  if (!state.data || state.tab === "overview") return;
+  const m = tableMatrix(state.tab);
+  const text = m.map(r => r.map(c => String(c).replace(/[\t\r\n]/g, " ")).join("\t")).join("\n");
+  const done = await copyText(text);
+  toast(done ? "已复制 " + KIND_NAME[state.tab] + "（" + (m.length - 1) + " 行 × 5 年，单位：" + UNIT[prefs.unit][1] + "），到 Excel 里直接粘贴" : "浏览器不允许复制，请改用「下载 CSV」");
+}
+
+/* ============ 导出 Excel（多工作表 .xlsx，零依赖） ============ */
+const XLSX_STYLE = { normal: 0, bold: 1, section: 2, num: 3, numBold: 4, numInt: 5, wrap: 6, title: 7, numNeg: 8 };
+/*@@XLSX@@*/
+function buildSheetRows(kind) {
+  const years = templateYears();
+  const div = UNIT[prefs.unit][0], unitTxt = UNIT[prefs.unit][1];
+  const rows = [];
+  rows.push({ h: 26, cells: [{ t: "s", v: state.co.name + "（" + state.co.secucode + "）" + KIND_NAME[kind] + " · 近五年年报（固定模板）", s: XLSX_STYLE.title }] });
+  rows.push({ h: 18, cells: [{ t: "s", v: "单位：人民币" + unitTxt + "　行次固定，未取到的科目填 0　数据来源：东方财富公开 F10 数据中心　生成时间：" + new Date().toLocaleString("zh-CN", { hour12: false }), s: XLSX_STYLE.wrap }] });
+  const head = [{ t: "s", v: "项目", s: XLSX_STYLE.section }];
+  years.forEach(y => head.push({ t: "s", v: y ? y + "年报" : "—", s: XLSX_STYLE.section }));
+  rows.push({ h: 22, cells: head });
+  buildRows(kind).forEach(it => {
+    if (it.type === "sec") { rows.push({ h: 18, cells: [{ t: "s", v: it.label, s: XLSX_STYLE.section }] }); return; }
+    const cells = [{ t: "s", v: it.label, s: XLSX_STYLE.wrap }];
+    years.forEach(y => {
+      const v = num(it.vals[y]);
+      cells.push({ t: "n", v: ok(v) ? (it.eps ? v : v / div) : 0, s: it.hl ? XLSX_STYLE.numBold : XLSX_STYLE.num });
+    });
+    rows.push({ cells });
+  });
+  return rows;
+}
+function buildEquitySheetRows() {
+  const years = templateYears();
+  const div = UNIT[prefs.unit][0], unitTxt = UNIT[prefs.unit][1];
+  const rows = [];
+  rows.push({ h: 26, cells: [{ t: "s", v: state.co.name + "（" + state.co.secucode + "）所有者权益变动（推算口径·固定模板） · 近五年年报", s: XLSX_STYLE.title }] });
+  rows.push({ h: 30, cells: [{ t: "s", v: "单位：人民币" + unitTxt + "　行次固定。说明：东财公开接口不提供年报原表逐行列示，本表由资产负债表权益科目 + 利润表归母净利润 + 现金流量表现金分红推算；倒挤行不可用于区分增发/回购/分红，原表请以公司年报 PDF 为准。", s: XLSX_STYLE.wrap }] });
+  const head = [{ t: "s", v: "项目（推算口径）", s: XLSX_STYLE.section }];
+  years.forEach(y => head.push({ t: "s", v: y ? y + "年报" : "—", s: XLSX_STYLE.section }));
+  rows.push({ h: 22, cells: head });
+  buildEquityTable().forEach(it => {
+    const cells = [{ t: "s", v: it.label, s: XLSX_STYLE.wrap }];
+    years.forEach(y => {
+      const v = num(it.vals[y]);
+      cells.push({ t: "n", v: ok(v) ? v / div : 0, s: it.hl ? XLSX_STYLE.numBold : XLSX_STYLE.num });
+    });
+    rows.push({ cells });
+  });
+  return rows;
+}
+function buildMetricSheetRows() {
+  const years = templateYears();
+  const div = UNIT[prefs.unit][0], unitTxt = UNIT[prefs.unit][1];
+  const rows = [];
+  rows.push({ h: 26, cells: [{ t: "s", v: state.co.name + "（" + state.co.secucode + "）财务指标 · 近五年年报", s: XLSX_STYLE.title }] });
+  rows.push({ h: 18, cells: [{ t: "s", v: "由三张主表计算。比率类单位为 %，倍数/次数类为原值，金额类单位为人民币" + unitTxt + "；不适用或缺数据填 0。", s: XLSX_STYLE.wrap }] });
+  const head = [{ t: "s", v: "指标", s: XLSX_STYLE.section }];
+  years.forEach(y => head.push({ t: "s", v: y ? y + "年报" : "—", s: XLSX_STYLE.section }));
+  rows.push({ h: 22, cells: head });
+  METRICS.forEach(m => {
+    if (m[0] === "g") { rows.push({ h: 18, cells: [{ t: "s", v: m[1], s: XLSX_STYLE.section }] }); return; }
+    const cells = [{ t: "s", v: m[1] + (m[2] === "pct" ? "（%）" : ""), s: XLSX_STYLE.wrap }];
+    years.forEach(y => {
+      const v = y ? m[3](y) : NaN;
+      cells.push({ t: "n", v: ok(v) ? (m[2] === "money" ? v / div : v) : 0, s: XLSX_STYLE.num });
+    });
+    rows.push({ cells });
+  });
+  return rows;
+}
+function buildCoverRows() {
+  const years = templateYears(), unitTxt = UNIT[prefs.unit][1];
+  const rows = [];
+  rows.push({ h: 30, cells: [{ t: "s", v: "近五年年报财务四表（固定模板）", s: XLSX_STYLE.title }] });
+  rows.push({ h: 20, cells: [{ t: "s", v: "公司：" + state.co.name + "　代码：" + state.co.secucode + "　市场：" + (MK_NAME[state.co.mk] || ""), s: XLSX_STYLE.bold }] });
+  rows.push({ h: 20, cells: [{ t: "s", v: "报告期：" + (years[4] || "") + "–" + (years[0] || "") + " 年报　单位：人民币" + unitTxt, s: 0 }] });
+  rows.push({ h: 20, cells: [{ t: "s", v: "生成时间：" + new Date().toLocaleString("zh-CN", { hour12: false }) + "　数据来源：东方财富公开 F10 数据中心", s: 0 }] });
+  rows.push({ h: 20, cells: [{ t: "s", v: "说明", s: XLSX_STYLE.bold }] });
+  [
+    "1. 四张表均为固定行次模板：无论查询哪家公司，行数、行序、列数完全一致，可直接按行/列粘贴到自己的取数表。",
+    "2. 列顺序固定为 5 个年报期，最新在前；某年无数据时该列留空。",
+    "3. 金额单位可在网页上切换（亿元/万元/元），导出会跟随当前选择；每股收益始终为元/股，不随单位换算。",
+    "4. 未取到的科目统一填 0，不再省略行，保证模板对齐。",
+    "5. 所有者权益表为推算口径：由资产负债表权益科目、利润表归母净利润、现金流量表现金分红推算，非年报原表。",
+    "6. 最后一个工作表「财务指标」由三张主表计算得出，放在四表之后，不影响四表的位置。",
+    "7. 数据由「财报四表查询」导出，如需最新数据请回到该页面重新查询。"
+  ].forEach(t => rows.push({ cells: [{ t: "s", v: t, s: 0 }] }));
+  return rows;
+}
+function exportXlsx() {
+  if (!state.data || !state.co) return;
+  const sheets = [
+    { name: "说明", rows: buildCoverRows() },
+    { name: "利润表", rows: buildSheetRows("income") },
+    { name: "资产负债表", rows: buildSheetRows("balance") },
+    { name: "现金流量表", rows: buildSheetRows("cash") },
+    { name: "所有者权益表", rows: buildEquitySheetRows() },
+    { name: "财务指标", rows: buildMetricSheetRows() }
+  ];
+  const X = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+  const sheetFiles = sheets.map((s, i) => ({ name: "xl/worksheets/sheet" + (i + 1) + ".xml", data: sheetXml(s.rows, 3, 1) }));
+  const wb = X + '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
+    "<sheets>" + sheets.map((s, i) => '<sheet name="' + xmlEsc(s.name) + '" sheetId="' + (i + 1) + '" r:id="rId' + (i + 1) + '"/>').join("") + "</sheets></workbook>";
+  const wbRels = X + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+    sheets.map((s, i) => '<Relationship Id="rId' + (i + 1) + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet' + (i + 1) + '.xml"/>').join("") +
+    '<Relationship Id="rId' + (sheets.length + 1) + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>';
+  const rootRels = X + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+    '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>';
+  const ct = X + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+    '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+    '<Default Extension="xml" ContentType="application/xml"/>' +
+    '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
+    '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>' +
+    sheets.map((s, i) => '<Override PartName="/xl/worksheets/sheet' + (i + 1) + '.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>').join("") + "</Types>";
+  const files = [
+    { name: "[Content_Types].xml", data: ct }, { name: "_rels/.rels", data: rootRels },
+    { name: "xl/workbook.xml", data: wb }, { name: "xl/_rels/workbook.xml.rels", data: wbRels },
+    { name: "xl/styles.xml", data: stylesXml() }
+  ].concat(sheetFiles);
+  const name = state.co.name + "_近五年财报_" + state.years[state.years.length - 1] + "-" + state.years[0] + ".xlsx";
+  saveBlob(makeZip(files), name);
+  toast("已导出 " + name + "（说明 + 四表 + 财务指标，单位：" + UNIT[prefs.unit][1] + "）");
+}
+
+/* ============ 联想下拉 ============ */
+let sugList = [], sugIdx = -1;
+function closeSug() { $("#sug").hidden = true; $("#q").setAttribute("aria-expanded", "false"); sugIdx = -1; }
+function hl(text, k) {
+  const i = text.toUpperCase().indexOf(k);
+  return i < 0 || !k ? esc(text) : esc(text.slice(0, i)) + "<mark>" + esc(text.slice(i, i + k.length)) + "</mark>" + esc(text.slice(i + k.length));
+}
+function openSug() {
+  const raw = $("#q").value, k = normKw(raw).replace(/\.(SH|SZ|BJ|HK)$/, "");
+  const box = $("#sug");
+  if (!k) { closeSug(); return; }
+  sugList = suggest(raw); sugIdx = -1;
+  box.innerHTML = sugList.length
+    ? sugList.map((s, i) => '<button type="button" class="sugItem" role="option" data-i="' + i + '"><span class="c">' + hl(s.code, k) + "." + s.mk +
+        '</span><span class="n">' + hl(s.name, k) + '</span><span class="tag">' + (MK_NAME[s.mk] || "") + "</span></button>").join("")
+    : '<div class="sugEmpty">内置名录里没有「' + esc(raw.trim()) + "」，按回车会联网再查一次（新股可直接输 6 位代码）。</div>";
+  box.hidden = false; $("#q").setAttribute("aria-expanded", "true");
+}
+function moveSug(d) {
+  if ($("#sug").hidden || !sugList.length) return;
+  sugIdx = (sugIdx + d + sugList.length) % sugList.length;
+  $$("#sug .sugItem").forEach((b, i) => { b.classList.toggle("on", i === sugIdx); if (i === sugIdx) b.scrollIntoView({ block: "nearest" }); });
+}
+
+/* ============ 主题 ============ */
+function applyTheme() {
+  if (prefs.theme === "dark" || prefs.theme === "light") document.documentElement.setAttribute("data-theme", prefs.theme);
+  else document.documentElement.removeAttribute("data-theme");
+}
+function isDark() {
+  if (prefs.theme) return prefs.theme === "dark";
+  return !!(window.matchMedia && matchMedia("(prefers-color-scheme:dark)").matches);
+}
+
+/* ============ 绑定 ============ */
+function bind() {
+  const q = $("#q");
+  $("#searchForm").addEventListener("submit", e => {
+    e.preventDefault();
+    const pick = sugIdx >= 0 ? sugList[sugIdx] : null;
+    loadCompany(pick ? pick.code + "." + pick.mk : q.value);
+  });
+  q.addEventListener("input", openSug);
+  q.addEventListener("focus", () => { q.select(); });
+  q.addEventListener("keydown", e => {
+    if (e.key === "ArrowDown") { e.preventDefault(); if ($("#sug").hidden) openSug(); else moveSug(1); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); moveSug(-1); }
+    else if (e.key === "Escape") closeSug();
+  });
+  $("#sug").addEventListener("mousedown", e => e.preventDefault());
+  $("#sug").addEventListener("click", e => {
+    const b = e.target.closest(".sugItem"); if (!b) return;
+    const s = sugList[Number(b.dataset.i)];
+    loadCompany(s.code + "." + s.mk);
+  });
+  document.addEventListener("click", e => { if (!e.target.closest(".searchBox")) closeSug(); });
+  document.addEventListener("keydown", e => {
+    if (e.key === "/" && !/INPUT|TEXTAREA/.test(document.activeElement.tagName)) { e.preventDefault(); q.focus(); }
+  });
+  $("#rail").addEventListener("click", e => { const b = e.target.closest(".chip"); if (b) loadCompany(b.dataset.q); });
+  $("#status").addEventListener("click", e => { if (e.target.id === "retryBtn") loadCompany(state.lastQuery); });
+
+  $("#tabs").addEventListener("click", e => {
+    const b = e.target.closest(".tab"); if (!b) return;
+    state.tab = b.dataset.tab; renderTab(); syncUrl();
+  });
+  const seg = (id, fn) => $("#" + id).addEventListener("click", e => { const b = e.target.closest("button"); if (b && !b.disabled) { fn(b.dataset.v); renderTab(); } });
+  seg("unitSeg", v => { prefs.unit = v; savePrefs(); });
+  seg("viewSeg", v => { state.view = v; });
+  seg("orderSeg", v => { prefs.order = v; savePrefs(); });
+  $("#hideEmpty").addEventListener("change", e => { prefs.hideEmpty = e.target.checked; savePrefs(); renderTab(); });
+  $("#rowFilter").addEventListener("input", e => { state.filter = e.target.value; renderTab(); });
+  $("#csvBtn").addEventListener("click", downloadCsv);
+  $("#copyBtn").addEventListener("click", copyTable);
+  $("#xlsxBtn").addEventListener("click", exportXlsx);
+  $("#linkBtn").addEventListener("click", async () => {
+    syncUrl();
+    toast((await copyText(location.href)) ? "已复制链接，对方打开就是这家公司的" + KIND_NAME[state.tab] : "复制失败，请直接复制地址栏");
+  });
+  $("#favBtn").addEventListener("click", () => {
+    const c = state.co; if (!c) return;
+    const i = prefs.fav.findIndex(x => x.c === c.secucode);
+    if (i >= 0) prefs.fav.splice(i, 1); else prefs.fav.unshift({ c: c.secucode, n: c.name });
+    prefs.fav = prefs.fav.slice(0, 20); savePrefs();
+    renderRail(); renderHeader();
+    toast(i >= 0 ? "已从自选移除" : "已加入自选（保存在本机浏览器）");
+  });
+  $("#themeBtn").addEventListener("click", () => { prefs.theme = isDark() ? "light" : "dark"; savePrefs(); applyTheme(); });
+
+  // 柱图提示
+  const tip = $("#tip");
+  const showTip = (el, x, y) => { tip.innerHTML = el.dataset.tip; tip.hidden = false; tip.style.left = Math.max(70, Math.min(window.innerWidth - 70, x)) + "px"; tip.style.top = y + "px"; };
+  document.addEventListener("mousemove", e => {
+    const g = e.target.closest && e.target.closest("[data-tip]");
+    if (g) showTip(g, e.clientX, e.clientY); else tip.hidden = true;
+  });
+  document.addEventListener("focusin", e => {
+    const g = e.target.closest && e.target.closest("[data-tip]");
+    if (g) { const r = g.getBoundingClientRect(); showTip(g, r.left + r.width / 2, r.top + 8); }
+  });
+  document.addEventListener("focusout", () => { tip.hidden = true; });
+  window.addEventListener("scroll", () => { tip.hidden = true; }, { passive: true });
+}
+
+applyTheme();
+bind();
+renderRail();
+(function boot() {
+  let auto = "", tab = "";
+  try { const sp = new URLSearchParams(location.search); auto = (sp.get("q") || "").trim(); tab = sp.get("tab") || ""; } catch (e) { /* 忽略 */ }
+  if (TABS.includes(tab)) state.tab = tab;
+  // 带参直达 → 上次看的公司 → 首次访问用贵州茅台做示例
+  loadCompany(auto || (prefs.recent[0] && prefs.recent[0].c) || SAMPLES[0][0]);
+})();
+</script>
+</body>
+</html>
